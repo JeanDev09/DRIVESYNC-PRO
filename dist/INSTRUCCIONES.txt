@@ -1,0 +1,85 @@
+================================================================
+DRIVESYNC PRO
+Google Drive Batch Cloner | Desarrollado por JeanDev
+================================================================
+
+DriveSync Pro es una herramienta inteligente y dinamica disenada 
+para clonar, sincronizar y respaldar archivos de forma masiva 
+desde Google Drive hacia cualquier destino (tu PC, un disco 
+externo o incluso otra cuenta de Google Drive).
+
+----------------------------------------------------------------
+[ REQUISITOS PREVIOS ]
+----------------------------------------------------------------
+- Sistema Operativo: Windows 10 o Windows 11.
+- Google Drive para Escritorio: Si vas a copiar desde o hacia la 
+  nube, asegurate de tener la aplicacion oficial de Google Drive 
+  instalada y abierta con tu(s) cuenta(s) vinculada(s).
+- Almacenamiento: El programa calculara automaticamente el 
+  espacio exacto que necesitas antes de comenzar.
+
+----------------------------------------------------------------
+[ INSTRUCCIONES DE USO ]
+----------------------------------------------------------------
+1. Inicia el programa: Ejecuta la herramienta (Sincronizador).
+2. Selecciona el Origen: El programa detectara automaticamente 
+   todas las unidades de Google Drive conectadas a tu equipo. 
+   Usa las flechas de tu teclado para elegir y presiona Enter.
+3. Elige el Destino: Decide a donde iran tus archivos:
+   * PC / Disco externo: Se abrira un explorador para que elijas 
+     cualquier carpeta local.
+   * Google Drive: Podras elegir otra unidad en la nube detectada 
+     en tu equipo para clonar de nube a nube.
+4. Metodo de escaneo: 
+   * Accesos directos: Ideal si te compartieron una carpeta, le 
+     creaste un acceso directo en tu Drive y quieres descargar 
+     su contenido real.
+   * Carpetas: Para clonar tus propios directorios estandar.
+5. Selecciona tu contenido: Navega por tus carpetas. Usa la 
+   tecla "Espacio" para marcar lo que deseas clonar y "Enter" 
+   para confirmar.
+6. Confirma e Inicia: Revisa el resumen en pantalla (archivos 
+   totales y tamano). Si todo esta correcto, confirma el inicio.
+
+----------------------------------------------------------------
+[ CARACTERISTICAS DESTACADAS ]
+----------------------------------------------------------------
+* Reanudacion Inteligente (Anti-Cortes): Si se va la luz, se 
+  cae el internet o necesitas apagar tu PC, presiona Ctrl+C 
+  para pausar de forma segura. Al volver a iniciar, el programa 
+  analizara los datos y continuara exactamente donde se quedo, 
+  sin duplicar ni descargar nada dos veces.
+* Verificacion de Integridad: El programa compara el tamano y 
+  las firmas de los archivos para asegurar que no haya descargas 
+  corruptas.
+* Interfaz en Tiempo Real: Visualiza tu progreso, velocidad de 
+  descarga y tiempo estimado (ETA) con total fluidez.
+
+----------------------------------------------------------------
+[ LICENCIA Y DERECHOS DE AUTOR ]
+----------------------------------------------------------------
+Este software es propiedad unica y exclusiva de JeanDev. 
+
+Queda ESTRICTAMENTE PROHIBIDA la reventa, distribucion, copia 
+o comercializacion de este programa por parte de terceros. 
+Solo JeanDev esta autorizado para vender y distribuir 
+esta herramienta. 
+
+Al utilizar DriveSync Pro, aceptas que la licencia es de uso 
+personal e intransferible. Cualquier intento de reventa o 
+distribucion no autorizada sera considerado una violacion a 
+los derechos de propiedad intelectual.
+
+----------------------------------------------------------------
+[ SOPORTE TECNICO Y CONTACTO ]
+----------------------------------------------------------------
+La aplicacion tiene mis enlaces de contacto incrustados. 
+Para hablar conmigo de forma rapida y directa, solo tienes 
+que mantener presionada la tecla "Ctrl" y hacer clic (Ctrl+Clic) 
+sobre los textos "ForoBeta" o "WhatsApp" dentro de la 
+interfaz del programa.
+
+Si tienes alguna duda durante el proceso o encuentras un error,
+no dudes en escribirme.
+
+================================================================
