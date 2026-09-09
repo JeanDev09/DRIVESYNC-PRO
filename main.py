@@ -1,9 +1,16 @@
 import sys
 import threading
 import time
+import subprocess
+import hashlib
+import os
+import platform
+import uuid
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.panel import Panel
 
+# Importaciones de módulos internos
 from drive.detector import detectar_unidades_drive
 from ui.interactive import menu_radio
 from ui.destination import seleccionar_carpeta_local
@@ -17,6 +24,79 @@ from storage.persistence import init_database
 console = Console()
 
 
+# =====================================================================
+# SISTEMA DE LICENCIAS OFFLINE (HWID)
+# =====================================================================
+def obtener_hwid():
+    try:
+        sistema = platform.system()
+
+        if sistema == "Windows":
+            # Usamos PowerShell, es más seguro y no sufre la deprecación de wmic
+            cmd = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", "(Get-CimInstance -Class Win32_ComputerSystemProduct).UUID"],
+                capture_output=True, text=True, shell=True
+            )
+            hwid = cmd.stdout.strip()
+            if hwid:
+                return hwid
+
+        elif sistema == "Linux":
+            # Para que puedas testear el programa localmente sin que te bloquee
+            try:
+                with open('/etc/machine-id', 'r') as f:
+                    return f.read().strip()
+            except FileNotFoundError:
+                pass
+
+        # Fallback universal si todo falla: Dirección MAC física del equipo
+        mac_node = uuid.getnode()
+        return str(mac_node)
+
+    except Exception:
+        return "HWID_FALLBACK_123"
+
+
+def validar_licencia(consola):
+    hwid = obtener_hwid()
+    # Tu palabra secreta para generar los hashes.
+    palabra_secreta = "JeanDev_DriveSync_Pro_2026_Secreta"
+    licencia_esperada = hashlib.sha256((hwid + palabra_secreta).encode()).hexdigest()
+
+    archivo_licencia = "licencia.key"
+
+    if not os.path.exists(archivo_licencia):
+        clear_view(consola)
+        consola.print(Panel.fit(
+            f"[bold red]❌ LICENCIA NO ENCONTRADA[/bold red]\n\n"
+            f"Por favor, envía tu HWID al desarrollador para obtener tu clave de acceso.\n\n"
+            f"[bold yellow]TU HWID:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
+            f"Una vez recibas tu clave, crea un archivo llamado [bold green]licencia.key[/bold green] "
+            f"en esta misma carpeta y pega la clave dentro.",
+            title="DriveSync Pro - Activación", border_style="red"
+        ))
+        Prompt.ask("\n[dim]Presiona ENTER para salir...[/dim]")
+        sys.exit(0)
+
+    with open(archivo_licencia, "r") as f:
+        licencia_usuario = f.read().strip()
+
+    if licencia_usuario != licencia_esperada:
+        clear_view(consola)
+        consola.print(Panel.fit(
+            f"[bold red]❌ LICENCIA INVÁLIDA O PC NO AUTORIZADA[/bold red]\n\n"
+            f"La clave en 'licencia.key' no corresponde a este equipo.\n"
+            f"Si cambiaste de placa base, necesitas adquirir una nueva licencia.\n\n"
+            f"[bold yellow]TU HWID ACTUAL:[/bold yellow] [bold cyan]{hwid}[/bold cyan]",
+            title="DriveSync Pro - Error de Activación", border_style="red"
+        ))
+        Prompt.ask("\n[dim]Presiona ENTER para salir...[/dim]")
+        sys.exit(0)
+
+
+# =====================================================================
+# LÓGICA PRINCIPAL DEL PROGRAMA
+# =====================================================================
 def flujo_principal():
     clear_view(console)
     unidades = detectar_unidades_drive()
@@ -139,7 +219,6 @@ def flujo_principal():
         tui.stop()
 
     mostrar_final(tui)
-    # --- FIN DE MODIFICACIÓN ---
 
 
 def mostrar_menu_principal():
@@ -161,6 +240,7 @@ def mostrar_menu_principal():
 
 def main():
     try:
+        validar_licencia(console)  # Se verifica la licencia antes de cargar cualquier otra cosa
         init_database()
         mostrar_menu_principal()
     except KeyboardInterrupt:

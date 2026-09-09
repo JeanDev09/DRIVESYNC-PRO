@@ -252,7 +252,7 @@ def menu_arbol_checkbox(console: Console, titulo: str, items_raiz: list[dict]) -
 
                 recolectar(nodos_raiz)
                 if not elegidos:
-                    mensaje_error = "[bold red]  Debes seleccionar al menos un elemento.[/bold red]"
+                    mensaje_error = "[bold red]Debes seleccionar al menos un elemento.[/bold red]"
                     continue
                 return elegidos
             elif tecla in ("c", "q", "esc"):
