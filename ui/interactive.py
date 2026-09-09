@@ -1,12 +1,13 @@
 import os
 import sys
 from pathlib import Path
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
 from rich.live import Live
 from rich import box
 from storage.persistence import obtener_tamano_carpeta_persistente
+from ui.theme import clear_view, contact_line, footer, screen_header, truncate_middle
 from utils.formatting import format_bytes
 
 
@@ -53,27 +54,37 @@ def leer_tecla() -> str:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-def menu_radio(console: Console, titulo: str, opciones: list[dict], default_idx: int = 0) -> int | None:
+def menu_radio(
+    console: Console,
+    titulo: str,
+    opciones: list[dict],
+    default_idx: int = 0,
+    show_contact: bool = False,
+) -> int | None:
+    clear_view(console)
     cursor = default_idx
     total = len(opciones)
 
     def render():
-        tabla = Table(box=box.ROUNDED, border_style="cyan", expand=True)
-        tabla.add_column("", width=2, justify="center")
-        tabla.add_column("Sel", width=4, justify="center")
-        tabla.add_column("Opción", style="bold white", ratio=1)
-        tabla.add_column("Detalle", justify="right", style="cyan")
+        tabla = Table(box=None, expand=True, padding=(0, 1))
+        tabla.add_column("", width=3, justify="center")
+        tabla.add_column("Opción", ratio=2)
+        tabla.add_column("Detalle", ratio=3, style="dim")
         for i, opc in enumerate(opciones):
             es_cursor = i == cursor
-            puntero = "[bold cyan]>[/bold cyan]" if es_cursor else " "
-            radio = "[bold green](•)[/bold green]" if es_cursor else "[dim]( )[/dim]"
-            estilo_texto = "bold bright_white" if es_cursor else "white"
-            tabla.add_row(puntero, radio, f"[{estilo_texto}]{opc['titulo']}[/{estilo_texto}]", opc.get("detalle", ""))
+            marker = "›" if es_cursor else " "
+            title_style = "bold cyan" if es_cursor else "white"
+            detail = truncate_middle(opc.get("detalle", ""), max(20, console.width // 2))
+            tabla.add_row(f"[{title_style}]{marker}[/{title_style}]",
+                          f"[{title_style}]{opc['titulo']}[/{title_style}]", detail,
+                          style="on rgb(20,45,55)" if es_cursor else "")
+        content_items = [screen_header("IDLE", titulo.title()), tabla]
+        if show_contact:
+            content_items.append(contact_line())
+        content_items.append(footer(("↑↓", "navegar"), ("Enter", "confirmar"), ("Esc", "volver")))
+        content = Group(*content_items)
+        return Panel(content, border_style="bright_black", box=box.HORIZONTALS, padding=(0, 1))
 
-        footer = "\n  [bold cyan]↑/↓[/bold cyan] Mover cursor       [bold cyan]Enter[/bold cyan] Seleccionar       [bold cyan]C[/bold cyan] Cancelar"
-        return Panel(tabla, title=f"[bold cyan] {titulo} [/bold cyan]", subtitle=footer, border_style="cyan")
-
-    # AQUÍ ESTÁ EL CAMBIO CLAVE: transient=True
     with Live(render(), console=console, auto_refresh=False, transient=True) as live:
         while True:
             live.update(render(), refresh=True)
@@ -84,11 +95,12 @@ def menu_radio(console: Console, titulo: str, opciones: list[dict], default_idx:
                 cursor = (cursor + 1) % total
             elif tecla == "ENTER":
                 return cursor
-            elif tecla in ("c", "esc"):
+            elif tecla in ("c", "q", "esc"):
                 return None
 
 
 def menu_arbol_checkbox(console: Console, titulo: str, items_raiz: list[dict]) -> list[dict] | None:
+    clear_view(console)
     console.print(
         "\n[dim cyan]Calculando tamaños de carpetas desde caché (esto puede tardar unos segundos la primera vez)...[/dim cyan]")
 
@@ -163,42 +175,39 @@ def menu_arbol_checkbox(console: Console, titulo: str, items_raiz: list[dict]) -
     visibles = obtener_visibles()
 
     def render():
-        tabla = Table(box=box.ROUNDED, border_style="cyan", expand=True)
-        tabla.add_column("", width=2, justify="center")
-        tabla.add_column("Estructura de Directorios", style="bold white", ratio=1)
+        tabla = Table(box=None, expand=True, padding=(0, 1))
+        tabla.add_column("", width=3, justify="center")
+        tabla.add_column("Estructura de directorios", style="white", ratio=1)
 
         for i, nodo in enumerate(visibles):
             es_cursor = i == cursor
-            puntero = "[bold cyan]>[/bold cyan]" if es_cursor else " "
+            puntero = "[bold cyan]›[/bold cyan]" if es_cursor else " "
 
             if nodo["estado_sel"] == 2:
-                check = "[bold green]\\[x][/bold green]"
+                check = "[bold green]☑[/bold green]"
             elif nodo["estado_sel"] == 1:
-                check = "[bold yellow]\\[-][/bold yellow]"
+                check = "[bold yellow]◐[/bold yellow]"
             else:
-                check = "[dim]\\[ ][/dim]"
+                check = "[dim]☐[/dim]"
 
             indent = "    " * nodo["nivel"]
-            icono = "[cyan]▼[/cyan]" if nodo["expandido"] else "[cyan]▶[/cyan]"
+            icono = "[cyan]▾[/cyan]" if nodo["expandido"] else "[cyan]▸[/cyan]"
 
-            estilo = "bold bright_white" if es_cursor else "white"
-            texto = f"{indent}{icono} {check} [{estilo}]{nodo['nombre_display']}[/{estilo}]"
+            estilo = "bold cyan" if es_cursor else "white"
+            texto = f"{indent}{icono} {check} [{estilo}]📁 {nodo['nombre_display']}[/{estilo}]"
 
-            tabla.add_row(puntero, texto)
+            tabla.add_row(puntero, texto, style="on rgb(20,45,55)" if es_cursor else "")
 
-        footer = (
-            "\n  [bold cyan]↑/↓[/bold cyan] Mover   "
-            "[bold cyan]→[/bold cyan] Expandir   "
-            "[bold cyan]←[/bold cyan] Contraer   "
-            "[bold cyan]Espacio[/bold cyan] Seleccionar   "
-            "[bold cyan]Enter[/bold cyan] Confirmar"
-        )
+        controls = footer(("↑↓", "navegar"), ("←→", "carpetas"),
+                          ("Espacio", "seleccionar"), ("Enter", "confirmar"),
+                          ("Esc", "volver"))
         if mensaje_error:
-            footer += f"\n\n  {mensaje_error}"
+            controls.append("\n")
+            controls.append(mensaje_error)
 
-        return Panel(tabla, title=f"[bold cyan] {titulo} [/bold cyan]", subtitle=footer, border_style="cyan")
+        content = Group(screen_header("IDLE", titulo.title()), tabla, controls)
+        return Panel(content, border_style="bright_black", box=box.HORIZONTALS, padding=(0, 1))
 
-    # AQUÍ ESTÁ EL CAMBIO CLAVE: transient=True
     with Live(render(), console=console, auto_refresh=False, transient=True) as live:
         while True:
             live.update(render(), refresh=True)
@@ -246,5 +255,5 @@ def menu_arbol_checkbox(console: Console, titulo: str, items_raiz: list[dict]) -
                     mensaje_error = "[bold red]  Debes seleccionar al menos un elemento.[/bold red]"
                     continue
                 return elegidos
-            elif tecla in ("c", "esc"):
+            elif tecla in ("c", "q", "esc"):
                 return None

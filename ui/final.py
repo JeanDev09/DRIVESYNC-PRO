@@ -1,57 +1,54 @@
-import sys
+"""Result screen for a completed, cancelled, or partially failed operation."""
 import time
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich import box
 
-from config import FOROBETA_URL, WHATSAPP_NUMERO
+from rich import box
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.table import Table
+from rich.text import Text
+
+from ui.theme import clear_view, contact_line, footer, screen_header
 from utils.formatting import format_bytes, format_time
 
 
 def mostrar_final(tui):
+    """Show a truthful final outcome without terminating the host application."""
     console = Console()
-    console.clear()
-
-    # Calculamos el tiempo total de ejecución
+    clear_view(console)
     elapsed = time.monotonic() - tui.start_time
+    cancelled = tui.status == "CANCELLED"
+    has_errors = tui.global_errors > 0 or tui.status == "ERROR"
+    if cancelled:
+        heading, colour = "⚠ Sincronización cancelada", "yellow"
+        description = "El progreso parcial se conserva para que puedas reanudarlo."
+    elif has_errors:
+        heading, colour = "⚠ Sincronización terminada con errores", "yellow"
+        description = "Los archivos restantes se procesaron; revisa la actividad para identificar los fallos."
+    else:
+        heading, colour = "✓ Sincronización completada", "green"
+        description = "Todos los elementos planificados se procesaron correctamente."
 
-    # Creamos la tabla de resumen
-    tabla = Table(box=box.ROUNDED, border_style="cyan", expand=True)
-    tabla.add_column("Métrica", style="bold white")
-    tabla.add_column("Resultado", justify="right", style="cyan")
-
-    # Determinar el color del estado
-    color_estado = "green"
-    if tui.status in ["CANCELLED", "ERROR"]:
-        color_estado = "red"
-
-    tabla.add_row("Estado Final de Sincronización", f"[bold {color_estado}]{tui.status}[/bold {color_estado}]")
-    tabla.add_row("Tiempo Transcurrido", format_time(elapsed))
-    tabla.add_row("Total de Datos Transferidos", format_bytes(tui.bytes_copied))
-    tabla.add_row("Archivos Completados", f"{tui.global_copied}")
-    tabla.add_row("Archivos Omitidos (Ya existían)", str(tui.global_skipped))
-
-    if tui.global_errors > 0:
-        tabla.add_row("Errores Encontrados", f"[bold red]{tui.global_errors}[/bold red]")
-
-    if tui.status == "CANCELLED":
-        tabla.add_row("Aviso del Sistema",
-                      "[yellow]El progreso parcial se guardó. Al reiniciar, continuará donde se quedó.[/yellow]")
-
-    # Footer con información de contacto dinámica
-    mensaje_despedida = (
-        f"[dim]Gracias por usar DriveSync Pro.[/dim]\n"
-        f"ForoBeta: [cyan]{FOROBETA_URL}[/cyan] | WhatsApp: [green]+{WHATSAPP_NUMERO}[/green]"
+    summary = Table.grid(expand=True, padding=(0, 2))
+    for _ in range(3):
+        summary.add_column(ratio=1)
+    summary.add_row(
+        Text.assemble(("TOTAL\n", "dim"), (f"{tui.global_total:,}", "white")),
+        Text.assemble(("PROCESADOS\n", "dim"), (f"{tui.global_processed:,}", "cyan")),
+        Text.assemble(("COPIADOS\n", "dim"), (f"{tui.global_copied:,}", "green")),
     )
-
-    panel_principal = Panel(
-        tabla,
-        title="[bold cyan] RESUMEN DE LA OPERACIÓN [/bold cyan]",
-        subtitle=mensaje_despedida,
-        border_style="cyan"
+    summary.add_row(
+        Text.assemble(("OMITIDOS\n", "dim"), (f"{tui.global_skipped:,}", "white")),
+        Text.assemble(("ERRORES\n", "dim"), (f"{tui.global_errors:,}", "red" if tui.global_errors else "dim")),
+        Text.assemble(("TIEMPO TOTAL\n", "dim"), (format_time(elapsed), "white")),
     )
-
-    console.print(panel_principal)
-    print("\n")
-    sys.exit(0)
+    details = Text.assemble(("Tamaño transferido: ", "dim"),
+                            (format_bytes(tui.bytes_copied), "white"))
+    content = Group(screen_header(tui.status, description), Text(heading, style=f"bold {colour}"),
+                    Text(""), summary, details, Text(""), contact_line(),
+                    footer(("Enter", "volver al inicio")))
+    console.print(Panel(content, border_style="bright_black", box=box.HORIZONTALS, padding=(0, 1)))
+    try:
+        Prompt.ask("", default="")
+    except (KeyboardInterrupt, EOFError):
+        pass

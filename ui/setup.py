@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.prompt import Prompt
@@ -7,9 +8,9 @@ from rich import box
 
 from sync.analyzer import analizar_origen, calcular_espacio_necesario
 from utils.formatting import format_bytes
-# Importamos el nuevo menú interactivo de árbol
 from ui.interactive import menu_arbol_checkbox
 from config import DEFAULT_ROOT_FOLDER
+from ui.theme import clear_view, footer, screen_header, truncate_middle
 
 
 def format_size(value):
@@ -68,7 +69,7 @@ def seleccionar_contenido(console, drive_raiz, modo_escaneo=0):
                 nombres_agregados.add(item)
 
     if not disponibles:
-        console.clear()
+        clear_view(console)
         console.print(
             Panel(
                 "[bold red]No se encontró ningún contenido con el método de escaneo seleccionado.[/bold red]",
@@ -77,20 +78,17 @@ def seleccionar_contenido(console, drive_raiz, modo_escaneo=0):
         )
         return None
 
-    console.clear()
+    clear_view(console)
     disponibles = sorted(disponibles, key=lambda x: x["nombre"].lower())
 
-    # Invocamos la nueva interfaz de Árbol (File Explorer style)
     return menu_arbol_checkbox(console, "EXPLORADOR DE DIRECTORIOS", disponibles)
 
 
 def solicitar_nombre_raiz(console):
-    console.clear()
-    panel = Panel(
-        f"[white]Ingresa el nombre para la carpeta contenedora:\n[dim]Presiona ENTER directamente para usar el valor por defecto.[/dim]",
-        title="[bold cyan] NOMBRE DE CARPETA RAÍZ [/bold cyan]",
-        border_style="cyan",
-    )
+    clear_view(console)
+    panel = Panel(Group(screen_header("IDLE", "Define la carpeta que contendrá la sincronización."),
+                        "[white]Nombre de carpeta raíz[/white]\n[dim]Pulsa Enter para usar el valor sugerido.[/dim]"),
+                  border_style="bright_black", box=box.HORIZONTALS, padding=(0, 1))
     console.print(panel)
 
     while True:
@@ -133,16 +131,19 @@ def preparar_seleccion(console, drive_raiz, destino, modo_escaneo=0, tui=None):
     nombre_raiz = solicitar_nombre_raiz(console)
     base_dir = Path(destino) / nombre_raiz
 
-    console.clear()
-    tabla = Table(box=box.ROUNDED, border_style="green", expand=True)
-    tabla.add_column("Concepto", style="bold white")
-    tabla.add_column("Resultado", justify="right")
-    tabla.add_row("Contenido seleccionado", f"{len(seleccion_final)} paquete(s)")
-    tabla.add_row("Total de archivos", f"{espacio['archivos']:,}")
-    tabla.add_row("Espacio necesario", format_size(espacio["bytes"]))
-    tabla.add_row("Destino final", str(base_dir))
-
-    console.print(Panel(tabla, title="[bold green] PLAN DE SINCRONIZACIÓN [/bold green]", border_style="green"))
+    clear_view(console)
+    tabla = Table.grid(expand=True, padding=(0, 1))
+    tabla.add_column(style="dim cyan", width=13)
+    tabla.add_column(style="white", ratio=1)
+    tabla.add_row("ORIGEN", truncate_middle(drive_raiz, 72))
+    tabla.add_row("DESTINO", truncate_middle(base_dir, 72))
+    tabla.add_row("ELEMENTOS", f"{len(seleccion_final)} paquetes · {espacio['archivos']:,} archivos")
+    tabla.add_row("TAMAÑO", format_size(espacio["bytes"]))
+    tabla.add_row("MODO", "Accesos directos" if modo_escaneo == 0 else "Carpetas")
+    console.print(Panel(Group(screen_header("IDLE", "Revisa el alcance antes de iniciar."), tabla,
+                              footer(("Enter", "iniciar"), ("Esc", "cancelar"))),
+                        title=" RESUMEN DE SINCRONIZACIÓN ", title_align="left",
+                        border_style="bright_black", box=box.HORIZONTALS, padding=(0, 1)))
 
     return {
         "seleccion": seleccion_final,
@@ -152,3 +153,12 @@ def preparar_seleccion(console, drive_raiz, destino, modo_escaneo=0, tui=None):
         "archivos": espacio["archivos"],
         "bytes": espacio["bytes"],
     }
+
+
+def confirmar_inicio(console) -> bool:
+    """Ask for confirmation immediately below the visual plan summary."""
+    try:
+        answer = Prompt.ask("[bold cyan]¿Iniciar sincronización?[/bold cyan]", choices=["s", "n"], default="s")
+    except (KeyboardInterrupt, EOFError):
+        return False
+    return answer.lower() == "s"
