@@ -64,34 +64,54 @@ def validar_licencia(consola):
     licencia_esperada = hashlib.sha256((hwid + palabra_secreta).encode()).hexdigest()
 
     archivo_licencia = "licencia.key"
+    estado_actual = None  # Para evitar que la consola parpadee dibujando lo mismo
 
-    if not os.path.exists(archivo_licencia):
-        clear_view(consola)
-        consola.print(Panel.fit(
-            f"[bold red]❌ LICENCIA NO ENCONTRADA[/bold red]\n\n"
-            f"Por favor, envía tu HWID al desarrollador para obtener tu clave de acceso.\n\n"
-            f"[bold yellow]TU HWID:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
-            f"Una vez recibas tu clave, crea un archivo llamado [bold green]licencia.key[/bold green] "
-            f"en esta misma carpeta y pega la clave dentro.",
-            title="DriveSync Pro - Activación", border_style="red"
-        ))
-        Prompt.ask("\n[dim]Presiona ENTER para salir...[/dim]")
-        sys.exit(0)
+    while True:
+        if not os.path.exists(archivo_licencia):
+            if estado_actual != "FALTANTE":
+                clear_view(consola)
+                consola.print(Panel.fit(
+                    f"[bold red]❌ LICENCIA NO ENCONTRADA[/bold red]\n\n"
+                    f"Por favor, envía tu HWID al desarrollador para obtener tu clave de acceso.\n\n"
+                    f"[bold yellow]TU HWID:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
+                    f"Una vez recibas tu clave, crea un archivo llamado [bold green]licencia.key[/bold green] "
+                    f"en esta misma carpeta y pega la clave dentro.\n\n"
+                    f"[dim]⏳ Esperando archivo... (Verificando cada 5 segundos. Presiona Ctrl+C para salir)[/dim]",
+                    title="DriveSync Pro - Activación", border_style="red"
+                ))
+                estado_actual = "FALTANTE"
 
-    with open(archivo_licencia, "r") as f:
-        licencia_usuario = f.read().strip()
+            time.sleep(5)
+            continue
 
-    if licencia_usuario != licencia_esperada:
-        clear_view(consola)
-        consola.print(Panel.fit(
-            f"[bold red]❌ LICENCIA INVÁLIDA O PC NO AUTORIZADA[/bold red]\n\n"
-            f"La clave en 'licencia.key' no corresponde a este equipo.\n"
-            f"Si cambiaste de placa base, necesitas adquirir una nueva licencia.\n\n"
-            f"[bold yellow]TU HWID ACTUAL:[/bold yellow] [bold cyan]{hwid}[/bold cyan]",
-            title="DriveSync Pro - Error de Activación", border_style="red"
-        ))
-        Prompt.ask("\n[dim]Presiona ENTER para salir...[/dim]")
-        sys.exit(0)
+        # Si el archivo existe, lo leemos
+        with open(archivo_licencia, "r") as f:
+            licencia_usuario = f.read().strip()
+
+        # Comparamos la licencia
+        if licencia_usuario == licencia_esperada:
+            if estado_actual is not None:
+                # Si venía de un error, le mostramos un mensaje bonito de éxito antes de arrancar
+                clear_view(consola)
+                consola.print(
+                    "\n[bold green]✅ Licencia validada correctamente. Iniciando DriveSync Pro...[/bold green]")
+                time.sleep(1.5)
+            break  # Rompe el bucle y permite que el programa continúe hacia el menú principal
+
+        else:
+            if estado_actual != "INVALIDA":
+                clear_view(consola)
+                consola.print(Panel.fit(
+                    f"[bold red]❌ LICENCIA INVÁLIDA O PC NO AUTORIZADA[/bold red]\n\n"
+                    f"La clave en 'licencia.key' no corresponde a este equipo.\n"
+                    f"Asegúrate de haber copiado el texto sin espacios extra al inicio o final.\n\n"
+                    f"[bold yellow]TU HWID ACTUAL:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
+                    f"[dim]⏳ Esperando corrección... (Verificando cada 5 segundos. Presiona Ctrl+C para salir)[/dim]",
+                    title="DriveSync Pro - Error de Activación", border_style="red"
+                ))
+                estado_actual = "INVALIDA"
+
+            time.sleep(5)
 
 
 # =====================================================================
