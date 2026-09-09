@@ -97,12 +97,27 @@ class ReelsTUI:
         text.append(value, style=style)
         return text
 
+    @staticmethod
+    def _progress_row(progress: ProgressBar) -> Table:
+        """Give a ProgressBar its own full-width render row inside a Group."""
+        row = Table.grid(expand=True)
+        row.add_column(ratio=1)
+        row.add_row(progress)
+        return row
+
     def _generate_layout(self) -> Layout:
+        # Reserve vertical space for the transfer before lower-priority activity.
+        # The former nine-line overview contained more renderables than its
+        # allocation, so Rich clipped the progress bar on shorter terminals.
+        compact = self.console.height < 24
+        overview_height = 10 if compact else 12
+        stats_height = 3 if compact else 5
         layout = Layout()
         layout.split_column(Layout(name="header", size=3), Layout(name="body"),
                             Layout(name="footer", size=1))
-        layout["body"].split_column(Layout(name="overview", size=9),
-                                     Layout(name="stats", size=5), Layout(name="logs", ratio=1))
+        layout["body"].split_column(Layout(name="overview", size=overview_height),
+                                     Layout(name="stats", size=stats_height),
+                                     Layout(name="logs", ratio=1))
 
         layout["header"].update(
             Panel(screen_header(self.status, self.status_message),
@@ -115,49 +130,80 @@ class ReelsTUI:
         return layout
 
     def _overview(self) -> Panel:
-        width = max(24, self.console.width - 10)
-        route_length = max(18, width // 2)
-        global_percent = self._percent(self.bytes_copied, self.bytes_total)
+        width = max(16, self.console.width - 8)
+        has_transfer_total = self.bytes_total > 0
+        show_global_percent = has_transfer_total or self.status in {"IDLE", "FINISHED", "COMPLETED"}
+        global_percent = (
+            100.0 if self.status in {"FINISHED", "COMPLETED"}
+            else self._percent(self.bytes_copied, self.bytes_total)
+        )
         file_percent = self._percent(self.current_file_copied, self.current_file_size)
-        label, colour = status_label(self.status)
-        grid = Table.grid(expand=True, padding=(0, 1))
-        grid.add_column(ratio=1)
-        grid.add_column(ratio=1)
-        origin = truncate_middle(self.origen, route_length)
-        destination = truncate_middle(self.destino, route_length)
-        grid.add_row(Text.assemble(("ORIGEN\n", "dim cyan"), (origin, "white")),
-                     Text.assemble(("DESTINO\n", "dim cyan"), (destination, "white")))
-        grid.add_row(Text.assemble(("ARCHIVO ACTUAL  ", "dim cyan"),
-                                   (truncate_middle(self.current_file, width), "bold white")), "")
-        grid.add_row(Text.assemble(("Origen: ", "dim"),
-                                   (truncate_middle(self.current_source, width), "dim")), "")
-        grid.add_row(Text.assemble(("Destino: ", "dim"),
-                                   (truncate_middle(self.current_destination, width), "dim")), "")
+        _, colour = status_label(self.status)
 
-        progress = ProgressBar(total=100, completed=global_percent, width=None,
-                               complete_style="cyan", finished_style="green",
-                               pulse_style="bright_cyan")
+        # A ProgressBar uses all remaining panel width when width=None.  Keeping
+        # it in a dedicated row (rather than beneath route metadata) makes it
+        # the primary visual element and prevents it from being clipped.
+        global_progress = ProgressBar(
+            total=100 if show_global_percent else None,
+            completed=global_percent if show_global_percent else 0,
+            width=None,
+            pulse=self.status == "SCANNING",
+            complete_style="cyan",
+            finished_style="green",
+            pulse_style="bright_cyan",
+        )
         details = Table.grid(expand=True)
         details.add_column(ratio=1)
         details.add_column(justify="right")
-        details.add_row(
-            Text.assemble((f"{global_percent:.1f}% ", f"bold {colour}"),
-                          (f"· {self.global_processed:,}/{self.global_total:,} archivos", "dim")),
-            Text.assemble((format_bytes(self.bytes_copied), "white"),
-                          (f" / {format_bytes(self.bytes_total)}", "dim")),
+        if has_transfer_total or self.status in {"FINISHED", "COMPLETED"}:
+            details.add_row(
+                Text.assemble((f"{self.global_processed:,} / {self.global_total:,} archivos", "bold white")),
+                Text.assemble((format_bytes(self.bytes_copied), "white"),
+                              (f" / {format_bytes(self.bytes_total)}", "dim")),
+            )
+        else:
+            details.add_row(Text("Esperando datos de transferencia", style="dim"), Text("", style="dim"))
+
+        global_heading = Table.grid(expand=True)
+        global_heading.add_column(ratio=1)
+        global_heading.add_column(justify="right")
+        global_heading.add_row(
+            Text("SINCRONIZACIÓN GLOBAL", style="bold cyan"),
+            Text(f"{global_percent:.1f}%" if show_global_percent
+                 else "—", style=f"bold {colour}"),
         )
-        file_line = Text.assemble(
-            ("Archivo: ", "dim"),
+
+        current_label = "ARCHIVO ACTUAL  "
+        current_heading = Text.assemble(
+            (current_label, "bold cyan"),
+            (truncate_middle(self.current_file, max(8, width - len(current_label))), "bold white"),
+        )
+        file_progress = ProgressBar(total=100 if self.current_file_size else None,
+                                    completed=file_percent if self.current_file_size else 0,
+                                    width=None, complete_style="bright_cyan",
+                                    finished_style="green", pulse_style="cyan")
+        file_details = Text.assemble(
             (f"{format_bytes(self.current_file_copied)} / {format_bytes(self.current_file_size)}", "white"),
-            (f"  ({file_percent:.1f}%)", "dim") if self.current_file_size else ("", ""),
+            (f"   {file_percent:.1f}%", "dim") if self.current_file_size else ("   Sin datos de tamaño", "dim"),
         )
-        performance = Text.assemble(
+        performance_line = Text.assemble(
             ("⚡ ", "cyan"), (format_speed(self.current_speed) if self.current_speed else "Calculando...", "white"),
             ("     ⏱ ", "dim"), (format_time(time.monotonic() - self.start_time), "white"),
             ("     ETA ", "dim"), (self._eta(), "yellow"),
         )
-        return Panel(Group(grid, Text(""), Text("SINCRONIZACIÓN", style="dim cyan"), progress,
-                           details, file_line, performance), box=box.HORIZONTALS,
+        if self.console.width < 60:
+            performance = Group(
+                Text.assemble(("⚡ ", "cyan"),
+                              (format_speed(self.current_speed) if self.current_speed else "Calculando...", "white"),
+                              ("     ⏱ ", "dim"), (format_time(time.monotonic() - self.start_time), "white")),
+                Text.assemble(("ETA ", "dim"), (self._eta(), "yellow")),
+            )
+            spacer = ()
+        else:
+            performance = performance_line
+            spacer = (Text(""),)
+        return Panel(Group(global_heading, self._progress_row(global_progress), details, *spacer, current_heading,
+                           self._progress_row(file_progress), file_details, performance), box=box.HORIZONTALS,
                      border_style="bright_black", padding=(0, 1))
 
     def _stats(self) -> Panel:
