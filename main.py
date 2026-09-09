@@ -1,4 +1,6 @@
 import sys
+import threading
+import time
 from rich.console import Console
 from rich.prompt import Prompt
 
@@ -19,27 +21,25 @@ def flujo_principal():
     clear_view(console)
     unidades = detectar_unidades_drive()
     if not unidades:
-        console.print("\n[bold red]✖ No se detectaron unidades de Google Drive en este equipo.[/bold red]")
+        console.print("\n[bold red]⚠️ No se detectaron unidades de Google Drive en este equipo.[/bold red]")
         Prompt.ask("Presiona ENTER para volver...")
         return
 
-    opciones_origen = [{"titulo": u.nombre_limpio, "detalle": f"Google Drive = {u.libre_gb:.1f} GB Libres"} for u in
+    opciones_origen = [{"titulo": u.nombre_limpio, "detalle": f"Google Drive • {u.libre_gb:.1f} GB Libres"} for u in
                        unidades]
-
     idx_origen = menu_radio(console, "UNIDADES GOOGLE DRIVE DETECTADAS", opciones_origen)
     if idx_origen is None: return
     unidad_origen = unidades[idx_origen]
-    clear_view(console)
 
+    clear_view(console)
     opciones_destino = [
         {"titulo": "PC / Disco externo", "detalle": "Seleccionar una carpeta local en tu equipo"},
         {"titulo": "Google Drive", "detalle": "Copiar directamente a una unidad en la nube"}
     ]
-
     idx_tipo_destino = menu_radio(console, "DESTINO DE LA COPIA", opciones_destino)
     if idx_tipo_destino is None: return
-    clear_view(console)
 
+    clear_view(console)
     if idx_tipo_destino == 0:
         ruta_destino = seleccionar_carpeta_local(console)
         if not ruta_destino: return
@@ -47,8 +47,8 @@ def flujo_principal():
         idx_dest_drive = menu_radio(console, "CUENTA DE GOOGLE DRIVE DESTINO", opciones_origen)
         if idx_dest_drive is None: return
         ruta_destino = unidades[idx_dest_drive].ruta_unidad
-    clear_view(console)
 
+    clear_view(console)
     opciones_escaneo = [
         {"titulo": "Escanear shortcuts o accesos directos",
          "detalle": "Detecta enlaces .lnk y carpetas compartidas ancladas a tu Drive"},
@@ -56,8 +56,8 @@ def flujo_principal():
     ]
     idx_escaneo = menu_radio(console, "MÉTODO DE ESCANEO", opciones_escaneo)
     if idx_escaneo is None: return
-    clear_view(console)
 
+    clear_view(console)
     plan = preparar_seleccion(
         console=console,
         drive_raiz=unidad_origen.ruta_unidad,
@@ -66,24 +66,80 @@ def flujo_principal():
     )
 
     if not plan: return
-
     if not confirmar_inicio(console):
         return
+
     clear_view(console)
 
     tui = ReelsTUI(unidad_origen.ruta_unidad, ruta_destino)
+    # Al llamar start(), Rich inicia automáticamente un hilo seguro a 10 FPS para dibujar.
     tui.start()
 
+    # --- INICIO: CENTRALIZACIÓN DE DIBUJADO Y CONTROL DE CONCURRENCIA ---
+    cancelado = False
+    ui_lock = threading.Lock()  # Candado para evitar colisiones de hilos
+
+    # Interceptamos el método refresh de TUI.
+    # El hilo de copiado llamará aquí, pero NO dibujará. Solo actualizará el modelo.
+    def hilo_seguro_refresh():
+        if cancelado:
+            raise KeyboardInterrupt
+
+        # Centralizamos y serializamos la actualización de datos
+        with ui_lock:
+            now = time.monotonic()
+            if now - tui._last_render < 0.08:
+                return
+            tui._last_render = now
+            tui._samples.append((now, tui.bytes_copied))
+            if len(tui._samples) >= 2:
+                started, start_bytes = tui._samples[0]
+                elapsed = now - started
+                copied = tui.bytes_copied - start_bytes
+                tui.current_speed = copied / elapsed if elapsed >= 0.35 and copied >= 0 else 0.0
+
+            # MAGIA AQUÍ: refresh=False.
+            # Actualizamos la vista en memoria, pero NO forzamos a la consola a pintar.
+            # El hilo nativo de Rich tomará este diseño y lo pintará de forma 100% segura.
+            tui.live.update(tui._generate_layout(), refresh=False)
+
+    # Inyectamos nuestra función segura
+    tui.refresh = hilo_seguro_refresh
+    excepcion_hilo = None
+
+    def tarea_sincronizacion():
+        nonlocal excepcion_hilo
+        try:
+            ejecutar_sincronizacion(plan, tui)
+        except BaseException as e:
+            excepcion_hilo = e
+
+    # Lanzamos el copiado de archivos en su propio hilo
+    hilo = threading.Thread(target=tarea_sincronizacion, daemon=True)
+    hilo.start()
+
     try:
-        ejecutar_sincronizacion(plan, tui)
+        # El hilo principal (este) ahora solo sirve para vigilar el Ctrl+C.
+        # No bloquea nada y no interfiere con la UI.
+        while hilo.is_alive():
+            time.sleep(0.1)
+
+        if excepcion_hilo:
+            raise excepcion_hilo
+
     except KeyboardInterrupt:
+        cancelado = True  # Ordena al hilo de copiado que aborte
+        hilo.join(timeout=1.5)  # Le damos tiempo a que cierre los archivos
+
         tui.set_status("CANCELLED", "Interrumpido por el usuario (Progreso guardado)")
         tui.log("Sincronización cancelada por el usuario. El progreso parcial se conserva.", "WARN")
-        tui.refresh()
+        # Forzamos un último dibujado seguro antes de cerrar
+        tui.live.update(tui._generate_layout(), refresh=True)
     finally:
         tui.stop()
 
     mostrar_final(tui)
+    # --- FIN DE MODIFICACIÓN ---
 
 
 def mostrar_menu_principal():
@@ -91,12 +147,12 @@ def mostrar_menu_principal():
         clear_view(console)
         try:
             opc = menu_radio(console, "Inicio", [
-                {"titulo": "Iniciar sincronización", "detalle": "Clona contenido de Google Drive a una ubicación elegida."},
+                {"titulo": "Iniciar sincronización",
+                 "detalle": "Clona contenido de Google Drive a una ubicación elegida."},
                 {"titulo": "Salir", "detalle": "Cerrar DriveSync Pro."},
             ], show_contact=True)
         except (KeyboardInterrupt, EOFError):
             break
-
         if opc == 0:
             flujo_principal()
         elif opc in (1, None):
