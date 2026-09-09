@@ -63,55 +63,77 @@ def validar_licencia(consola):
     palabra_secreta = "JeanDev_DriveSync_Pro_2026_Secreta"
     licencia_esperada = hashlib.sha256((hwid + palabra_secreta).encode()).hexdigest()
 
-    archivo_licencia = "licencia.key"
-    estado_actual = None  # Para evitar que la consola parpadee dibujando lo mismo
+    sistema = platform.system()
+    ruta_registro = r"Software\JeanDev\DriveSyncPro"
 
-    while True:
-        if not os.path.exists(archivo_licencia):
-            if estado_actual != "FALTANTE":
-                clear_view(consola)
-                consola.print(Panel.fit(
-                    f"[bold red]❌ LICENCIA NO ENCONTRADA[/bold red]\n\n"
-                    f"Por favor, envía tu HWID al desarrollador para obtener tu clave de acceso.\n\n"
-                    f"[bold yellow]TU HWID:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
-                    f"Una vez recibas tu clave, crea un archivo llamado [bold green]licencia.key[/bold green] "
-                    f"en esta misma carpeta y pega la clave dentro.\n\n"
-                    f"[dim]⏳ Esperando archivo... (Verificando cada 5 segundos. Presiona Ctrl+C para salir)[/dim]",
-                    title="DriveSync Pro - Activación", border_style="red"
-                ))
-                estado_actual = "FALTANTE"
-
-            time.sleep(5)
-            continue
-
-        # Si el archivo existe, lo leemos
-        with open(archivo_licencia, "r") as f:
-            licencia_usuario = f.read().strip()
-
-        # Comparamos la licencia
-        if licencia_usuario == licencia_esperada:
-            if estado_actual is not None:
-                # Si venía de un error, le mostramos un mensaje bonito de éxito antes de arrancar
-                clear_view(consola)
-                consola.print(
-                    "\n[bold green]✅ Licencia validada correctamente. Iniciando DriveSync Pro...[/bold green]")
-                time.sleep(1.5)
-            break  # Rompe el bucle y permite que el programa continúe hacia el menú principal
-
+    # Funciones auxiliares para guardar/leer según el sistema operativo
+    def leer_licencia():
+        if sistema == "Windows":
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, ruta_registro, 0, winreg.KEY_READ)
+                val, _ = winreg.QueryValueEx(key, "LicenseKey")
+                winreg.CloseKey(key)
+                return val.strip()
+            except Exception:
+                return None
         else:
-            if estado_actual != "INVALIDA":
-                clear_view(consola)
-                consola.print(Panel.fit(
-                    f"[bold red]❌ LICENCIA INVÁLIDA O PC NO AUTORIZADA[/bold red]\n\n"
-                    f"La clave en 'licencia.key' no corresponde a este equipo.\n"
-                    f"Asegúrate de haber copiado el texto sin espacios extra al inicio o final.\n\n"
-                    f"[bold yellow]TU HWID ACTUAL:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
-                    f"[dim]⏳ Esperando corrección... (Verificando cada 5 segundos. Presiona Ctrl+C para salir)[/dim]",
-                    title="DriveSync Pro - Error de Activación", border_style="red"
-                ))
-                estado_actual = "INVALIDA"
+            # Fallback para que puedas testear el programa en tu entorno Linux
+            try:
+                with open("licencia.key", "r") as f:
+                    return f.read().strip()
+            except Exception:
+                return None
 
-            time.sleep(5)
+    def guardar_licencia(lic):
+        if sistema == "Windows":
+            try:
+                import winreg
+                # Crea la carpeta en el registro si no existe
+                winreg.CreateKey(winreg.HKEY_CURRENT_USER, ruta_registro)
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, ruta_registro, 0, winreg.KEY_WRITE)
+                winreg.SetValueEx(key, "LicenseKey", 0, winreg.REG_SZ, lic)
+                winreg.CloseKey(key)
+            except Exception as e:
+                consola.print(f"[red]Error guardando en el registro: {e}[/red]")
+        else:
+            with open("licencia.key", "w") as f:
+                f.write(lic)
+
+    # 1. Comprobación silenciosa al abrir el programa
+    licencia_actual = leer_licencia()
+    if licencia_actual == licencia_esperada:
+        return  # Todo correcto, el programa continúa al menú principal automáticamente
+
+    # 2. Si no hay licencia o es inválida, entramos al menú interactivo de activación
+    while True:
+        clear_view(consola)
+        consola.print(Panel.fit(
+            f"[bold red]❌ LICENCIA NO ENCONTRADA O INVÁLIDA[/bold red]\n\n"
+            f"Por favor, envía tu HWID al desarrollador para obtener tu clave de acceso.\n\n"
+            f"[bold yellow]TU HWID:[/bold yellow] [bold cyan]{hwid}[/bold cyan]\n\n"
+            f"Si ya tienes tu clave, pégala a continuación.",
+            title="DriveSync Pro - Activación", border_style="red"
+        ))
+
+        # Pedimos el input del usuario usando Rich
+        llave_ingresada = Prompt.ask("\n[bold green]🔑 Pega tu clave de licencia[/bold green]").strip()
+
+        if llave_ingresada == licencia_esperada:
+            guardar_licencia(llave_ingresada)
+            clear_view(consola)
+            consola.print("\n[bold green]✅ Licencia validada y guardada correctamente. Iniciando DriveSync Pro...[/bold green]")
+            time.sleep(1.5)
+            break
+        else:
+            clear_view(consola)
+            consola.print(Panel.fit(
+                "[bold red]❌ CLAVE INCORRECTA[/bold red]\n"
+                "La clave ingresada no es válida para este equipo.\n"
+                "Asegúrate de copiarla sin espacios al inicio o final.",
+                border_style="red"
+            ))
+            Prompt.ask("\n[dim]Presiona ENTER para intentar de nuevo...[/dim]")
 
 
 # =====================================================================
@@ -260,12 +282,23 @@ def mostrar_menu_principal():
 
 def main():
     try:
-        validar_licencia(console)  # Se verifica la licencia antes de cargar cualquier otra cosa
+        validar_licencia(console)
         init_database()
         mostrar_menu_principal()
+
     except KeyboardInterrupt:
-        console.print("\n\n[dim]Programa finalizado.[/dim]\n")
-        sys.exit(0)
+        console.print("\n\n[dim]Programa finalizado por el usuario.[/dim]\n")
+
+    except Exception as e:
+        console.print(f"\n[bold red]❌ Error inesperado:[/bold red] {e}\n")
+
+    finally:
+        # La consola NO se cierra automáticamente.
+        console.print("\n[dim]Presiona ENTER para cerrar el programa...[/dim]")
+        try:
+            input()
+        except (KeyboardInterrupt, EOFError):
+            pass
 
 
 if __name__ == "__main__":

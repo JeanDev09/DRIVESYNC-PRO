@@ -1,4 +1,3 @@
-"""Result screen for a completed, cancelled, or partially failed operation."""
 import time
 
 from rich import box
